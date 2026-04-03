@@ -1,0 +1,149 @@
+# CrashMargin: Default Configuration
+# ICAIF 2026 — Vietnamese Stock Crash Prediction with Dynamic Margin Management
+# All values aligned with paper Sections 3–4.
+
+# ---------------------------------------------------------------------------
+# Data (Section 4.1)
+# ---------------------------------------------------------------------------
+data:
+  market: "HOSE_HNX"                   # Ho Chi Minh + Hanoi Stock Exchanges
+  start_date: "2018-01-01"
+  end_date: "2024-09-30"
+  # Crash definition: W_{i,t} < mu_i - 3.09 * sigma_i (Section 3.1)
+  crash_threshold_z: 3.09              # 0.1th percentile under normality
+  min_history_weeks: 26                # minimum weeks before labelling
+  num_stocks: 95                       # stocks satisfying inclusion criteria
+  min_daily_volume: 100000             # average daily volume filter
+
+# ---------------------------------------------------------------------------
+# Features (Section 3.2)
+# ---------------------------------------------------------------------------
+features:
+  # Market microstructure (Section 3.2.1): 47 features
+  lookback_window: 20                  # 20-day lookback (Section 3.3)
+  volatility_windows: [5, 10, 20]      # realized volatility windows
+  atr_window: 14
+  max_drawdown_windows: [5, 10, 20]
+  rsi_window: 14
+  bollinger_window: 20
+  stochastic_window: 14
+  volume_zscore_window: 20
+  skewness_window: 20
+  kurtosis_window: 20
+  normalization: "expanding_zscore"    # expanding-window z-score (no lookahead)
+
+  # Vietnamese news sentiment (Section 3.2.2): 4 features per stock-day
+  sentiment_model: "PhoBERT"           # vinai/phobert-base
+  sentiment_features:
+    - sent_mean                        # mean sentiment polarity
+    - sent_volume                      # article count (log-transformed)
+    - neg_ratio                        # negative-news ratio
+    - sent_momentum5                   # 5-day sentiment momentum
+
+  # Margin lending (Section 3.2.4): 7 features
+  margin_window: 20                    # 20-day rolling windows
+
+# ---------------------------------------------------------------------------
+# Model Architecture (Section 3.3)
+# ---------------------------------------------------------------------------
+model:
+  hidden_dim: 128                      # shared hidden dim across encoders
+
+  # Temporal Fusion Transformer encoder (Section 3.3)
+  tft_num_features: 47                 # market microstructure features
+  tft_num_heads: 3                     # attention heads
+  tft_lookback: 20                     # 20-day lookback window
+
+  # BiLSTM sentiment encoder (Section 3.3)
+  bilstm_input_dim: 4                  # sentiment features per day
+  bilstm_hidden_dim: 64                # per direction -> 128 total
+  bilstm_num_layers: 2
+  bilstm_dropout: 0.15
+
+  # Graph Attention Network (Section 3.3)
+  gat_hidden_dim: 64                   # hidden dim per head
+  gat_num_heads: 4                     # attention heads per layer
+  gat_num_layers: 2
+  gat_negative_slope: 0.2              # LeakyReLU
+  gat_attn_dropout: 0.1
+
+  # Margin MLP encoder (Section 3.2.4)
+  margin_input_dim: 7                  # 7 margin lending features
+  margin_hidden_dim: 64
+
+  # Cross-modal attention fusion (Section 3.3)
+  fusion_mlp_hidden: 256               # 2-layer MLP: 256 -> 128
+  fusion_dropout: 0.2
+
+  # Prediction head
+  output: "binary_logit"               # sigmoid applied externally
+
+# ---------------------------------------------------------------------------
+# Graph construction (Section 3.2.3)
+# ---------------------------------------------------------------------------
+graph:
+  # Industry correlation graph
+  corr_window: 20                      # 20-day rolling return correlations
+  prune_percentile: 0.70               # edges below 70th percentile pruned
+  update_freq: "W"                     # updated weekly
+
+  # Margin-exposure graph
+  ltv_threshold: 0.60                  # high-LTV portfolio cutoff
+  min_co_occurrence: 2
+
+# ---------------------------------------------------------------------------
+# Training (Section 3.4)
+# ---------------------------------------------------------------------------
+training:
+  seed: 42
+  n_seeds: 10                          # 10 random seeds; report mean + 95% CI
+  epochs: 100
+  batch_size: 256
+  learning_rate: 1.0e-4                # AdamW lr (Section 3.4)
+  weight_decay: 1.0e-5                 # AdamW weight decay (Section 3.4)
+  scheduler: "cosine_annealing"        # cosine annealing
+  patience: 7                          # early stopping on val AUROC
+
+  # Focal loss (Section 3.4)
+  focal_gamma: 2.0                     # focusing parameter
+  focal_alpha: 0.8                     # weight for crash (minority) class
+
+  # Time-weighted sampling (Section 3.4)
+  recency_weight: 1.5                  # 1.5x weight for recent 25%
+  recency_fraction: 0.25
+
+  gradient_clip: 1.0
+
+# ---------------------------------------------------------------------------
+# Dynamic Margin Policy (Section 3.5, Eq. 1)
+# ---------------------------------------------------------------------------
+margin_policy:
+  # m*_{i,t} = m_min + (m_max - m_min) * sigma((p_hat - tau) / T)
+  m_min: 0.40                          # minimum margin ratio
+  m_max: 0.85                          # maximum margin ratio
+  tau: 0.15                            # sigmoid midpoint threshold
+  T: 0.10                              # sigmoid temperature
+
+# ---------------------------------------------------------------------------
+# Walk-Forward Validation (Section 4.1)
+# ---------------------------------------------------------------------------
+walk_forward:
+  # Temporal splits: train 2018-2020, val 2021, test 2022-2024
+  train_start: "2018-01-01"
+  train_end: "2020-12-31"
+  val_start: "2021-01-01"
+  val_end: "2021-12-31"
+  test_start: "2022-01-01"
+  test_end: "2024-09-30"
+  n_windows: 7                         # 7 semi-annual rolling test windows
+  retrain_months: 6                    # retrain every 6 months
+
+# ---------------------------------------------------------------------------
+# Experiment reproducibility
+# ---------------------------------------------------------------------------
+experiment:
+  device: "auto"                       # auto-detect CUDA / MPS / CPU
+  num_workers: 4
+  output_dir: "outputs"
+  figure_dir: "outputs/figures"
+  log_level: "INFO"
