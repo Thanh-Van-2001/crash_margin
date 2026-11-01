@@ -2,7 +2,7 @@
 
 **A Multimodal Framework for Stock-Level Crash Forecasting with Dynamic Margin Risk Management**
 
-*ICAIF 2026*
+*ICAIF 2026 Workshop on Multimodal & Foundation Models in Banking (MFMB)*
 
 ## Abstract
 
@@ -132,8 +132,8 @@ pytest tests/ -v
   title     = {{CrashMargin}: A Multimodal Framework for Stock-Level Crash
                Forecasting with Dynamic Margin Risk Management},
   author    = {Anonymous},
-  booktitle = {Proceedings of the 7th ACM International Conference on
-               AI in Finance (ICAIF)},
+  booktitle = {ICAIF 2026 Workshop on Multimodal \& Foundation Models
+               in Banking (MFMB)},
   year      = {2026},
 }
 ```
